@@ -45,7 +45,7 @@ Remaining major work:
 | 5 | Branch and Jump Control Hazards | JEQ/JMP PC updates and flushing | Correct branch/jump behavior |
 | 6 | Required Output and Final Verification | Console output and acceptance checks | Required trace and final state output |
 
-## Member 1: Integrator And Simulation Loop
+## Shahd: Integrator And Simulation Loop
 
 Member 1 owns the main execution flow and final integration.
 
@@ -79,7 +79,7 @@ Done when:
 - The simulator stops naturally when the pipeline is empty.
 - The final integrated code compiles cleanly.
 
-## Member 2: Parser, Encoding, And Memory Rules
+## Hossam: Parser, Encoding, And Memory Rules
 
 Member 2 owns instruction loading, instruction encoding, and memory correctness.
 
@@ -113,7 +113,7 @@ Done when:
 - Load/store helpers, if added, are used consistently by the pipeline.
 - Parser still stores only raw encoded instructions in memory.
 
-## Member 3: Pipeline Stage Timing
+## Lina: Pipeline Stage Timing
 
 Member 3 owns the mechanics of IF, ID, EX, MEM, and WB.
 
@@ -150,7 +150,7 @@ Done when:
 - Multiple instructions overlap according to the Package 2 timing pattern.
 - Stage state is stable enough for Member 6 to print.
 
-## Member 4: Data Hazard Handling
+## Som3a: Data Hazard Handling
 
 Member 4 owns data hazard detection and correction.
 
@@ -182,8 +182,7 @@ Done when:
 - Load-use cases compute correct results.
 - Any forwarding or stalling event can be shown in the output.
 
-## Member 5: Branch And Jump Control Hazards
-
+## Elsh: Branch And Jump Control Hazards
 Member 5 owns JEQ/JMP PC updates and flushing.
 
 Expected outputs:
@@ -216,7 +215,7 @@ Done when:
 - JMP jumps to the correct target and drops younger instructions.
 - Flushed instructions produce no register or memory side effects.
 
-## Member 6: Required Output And Final Verification
+## Arwa: Required Output And Final Verification
 
 Member 6 owns console output and acceptance checks.
 
