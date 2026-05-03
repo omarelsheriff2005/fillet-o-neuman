@@ -27,6 +27,7 @@
 
 typedef struct {
     int valid;
+    int stage_cycles;
     int32_t instruction;
     int opcode;
     int type;
@@ -93,5 +94,10 @@ int32_t parse_instruction(char *line);
 void load_program_from_file(Processor *cpu, const char *filename);
 void print_binary32(int32_t value);
 void print_loaded_instructions(const Processor *cpu);
+
+void pipeline_cycle(Processor *cpu);
+int pipeline_empty(const Processor *cpu);
+void print_pipeline_state(const Processor *cpu);
+
 
 #endif

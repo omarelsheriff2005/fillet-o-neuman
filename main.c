@@ -12,7 +12,22 @@ int main(int argc, char **argv) {
 
     initialize_processor(&cpu);
     load_program_from_file(&cpu, program_path);
+
     print_loaded_instructions(&cpu);
+
+    printf("\nStarting Pipeline Simulation...\n");
+
+    while (!pipeline_empty(&cpu)) {
+        pipeline_cycle(&cpu);
+        print_pipeline_state(&cpu);
+    }
+
+    printf("\nPipeline Simulation Finished.\n");
+
+    printf("\nFinal Registers:\n");
+    for (int i = 0; i < NUM_REGISTERS; i++) {
+        printf("R%d = %d\n", i, cpu.reg[i]);
+    }
 
     return 0;
 }
