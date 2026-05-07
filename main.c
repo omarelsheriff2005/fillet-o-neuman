@@ -1,5 +1,4 @@
 #include "architecture.h"
-
 #include <stdio.h>
 
 int main(int argc, char **argv) {
@@ -27,6 +26,13 @@ int main(int argc, char **argv) {
     printf("\nFinal Registers:\n");
     for (int i = 0; i < NUM_REGISTERS; i++) {
         printf("R%d = %d\n", i, cpu.reg[i]);
+    }
+
+    printf("\nFinal Memory:\n");
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        if (cpu.memory[i] != 0) {
+            printf("mem[%d] = %d\n", i, cpu.memory[i]);
+        }
     }
 
     return 0;
