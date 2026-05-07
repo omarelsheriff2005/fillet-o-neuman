@@ -12,6 +12,120 @@ static void clear_latch(PipelineReg *reg) {
     reg->dest_reg = -1;
 }
 
+/*
+ * Detect data hazards and return 1 if a stall is needed, 0 otherwise.
+ * 
+ * Data hazards occur when:
+ * 1. An instruction in ID stage needs a register value
+ * 2. A previous instruction (in EX, MEM, or WB) is writing to that register
+ * 3. The value is not yet available for forwarding
+ * 
+ * MOVR (load) is a special case: it writes the loaded value in WB stage.
+ * If the current instruction needs the result of a MOVR:
+ * - If MOVR is in EX stage: the loaded value isn't ready yet (in MEM stage next)
+ * - If MOVR is in MEM stage: the loaded value is being loaded now, available next cycle for WB
+ * We need to stall if MOVR is in EX stage and we need its destination register.
+ */
+static int detect_hazard(Processor *cpu, PipelineReg *reg) {
+    int op = reg->opcode;
+    int src_r1 = -1, src_r2 = -1;
+    
+    /* Determine source registers based on instruction type */
+    switch (op) {
+        case OP_ADD:
+        case OP_SUB:
+        case OP_MUL:
+        case OP_AND:
+        case OP_JEQ:
+            src_r1 = reg->r1;
+            src_r2 = reg->r2;
+            break;
+        case OP_LSL:
+        case OP_LSR:
+            src_r1 = -1;  /* R1 is destination */
+            src_r2 = reg->r2;
+            break;
+        case OP_MOVI:
+            src_r1 = -1;  /* R1 is destination */
+            src_r2 = -1;
+            break;
+        case OP_ORI:
+            src_r1 = -1;  /* R1 is destination */
+            src_r2 = reg->r2;
+            break;
+        case OP_MOVR:
+        case OP_MOVM:
+            src_r1 = -1;  /* R1 is destination (for MOVR) or source (for MOVM) */
+            src_r2 = reg->r2;
+            break;
+        case OP_JMP:
+            src_r1 = -1;
+            src_r2 = -1;
+            break;
+    }
+    
+    /* Special case: MOVM reads both R1 and R2 */
+    if (op == OP_MOVM) {
+        src_r1 = reg->r1;
+        src_r2 = reg->r2;
+    }
+    
+    /* Check ID/EX stage for MOVR hazard.
+       A load-use hazard occurs when the instruction currently in EX
+       is a MOVR and the next instruction in ID depends on its destination.
+       The result is not available until after the MEM stage completes.
+    */
+    if (cpu->ID_EX.valid && cpu->ID_EX.dest_reg > 0) {
+        if (cpu->ID_EX.opcode == OP_MOVR) {
+            if ((src_r1 > 0 && src_r1 == cpu->ID_EX.dest_reg) ||
+                (src_r2 > 0 && src_r2 == cpu->ID_EX.dest_reg)) {
+                return 1;  /* Stall needed */
+            }
+        }
+    }
+    
+    return 0;  /* No stall needed */
+}
+
+/*
+ * Forward operands from earlier pipeline stages if available.
+ * This handles data hazards by providing the computed result early
+ * instead of waiting for it to be written to the register file.
+ */
+static void forward_operands(Processor *cpu, PipelineReg *reg) {
+    /* Forward from EX/MEM stage (ALU results available, but not MOVR loads yet) */
+    if (cpu->EX_MEM.valid && cpu->EX_MEM.dest_reg > 0) {
+        if (cpu->EX_MEM.dest_reg == reg->r1) {
+            if (cpu->EX_MEM.opcode != OP_MOVR) {
+                reg->val1 = cpu->EX_MEM.alu_result;
+            }
+        }
+        if (cpu->EX_MEM.dest_reg == reg->r2) {
+            if (cpu->EX_MEM.opcode != OP_MOVR) {
+                reg->val2 = cpu->EX_MEM.alu_result;
+            }
+        }
+    }
+    
+    /* Forward from MEM/WB stage (all results available) */
+    if (cpu->MEM_WB.valid && cpu->MEM_WB.dest_reg > 0) {
+        if (cpu->MEM_WB.dest_reg == reg->r1) {
+            if (cpu->MEM_WB.opcode == OP_MOVR) {
+                reg->val1 = cpu->MEM_WB.mem_result;
+            } else {
+                reg->val1 = cpu->MEM_WB.alu_result;
+            }
+        }
+        if (cpu->MEM_WB.dest_reg == reg->r2) {
+            if (cpu->MEM_WB.opcode == OP_MOVR) {
+                reg->val2 = cpu->MEM_WB.mem_result;
+            } else {
+                reg->val2 = cpu->MEM_WB.alu_result;
+            }
+        }
+    }
+}
+
 static void decode_fields(Processor *cpu, PipelineReg *reg) {
     int instr = reg->instruction;
     int op;
@@ -27,18 +141,23 @@ static void decode_fields(Processor *cpu, PipelineReg *reg) {
     reg->imm = sign_extend(instr & 0x3FFFF, 18);
     reg->address = instr & 0x0FFFFFFF;
 
+    /* Read operands from register file */
     reg->val1 = cpu->reg[reg->r1];
     reg->val2 = cpu->reg[reg->r2];
 
+    /* Apply forwarding if available */
+    forward_operands(cpu, reg);
+
     op = reg->opcode;
 
+    /* Determine destination register */
     if (op == OP_ADD || op == OP_SUB || op == OP_MUL || op == OP_AND) {
         reg->dest_reg = reg->r3;
     } else if (op == OP_MOVI || op == OP_ORI || op == OP_LSL ||
                op == OP_LSR || op == OP_MOVR) {
         reg->dest_reg = reg->r1;
     } else {
-        reg->dest_reg = -1;
+        reg->dest_reg = -1;  /* JEQ, JMP, MOVM don't write to registers */
     }
 }
 
@@ -152,6 +271,11 @@ void decode(Processor *cpu) {
        If ID_EX is busy, keep waiting here.
     */
     if (cpu->ID_EX.valid) {
+        return;
+    }
+
+    /* Stall for load-use hazards before moving the instruction forward. */
+    if (detect_hazard(cpu, &cpu->IF_ID)) {
         return;
     }
 
