@@ -84,6 +84,12 @@ void decode(Processor *cpu);
 void execute(Processor *cpu);
 void memory_stage(Processor *cpu);
 void writeback(Processor *cpu);
+int32_t readMainMemory(Processor *cpu, int address);
+void writeMainMemory(Processor *cpu, int address, int32_t value);
+int32_t readInstructionMemory(Processor *cpu, int address);
+void writeInstructionMemory(Processor *cpu, int address, int32_t value);
+int32_t readDataMemory(Processor *cpu, int address);
+void writeDataMemory(Processor *cpu, int address, int32_t value);
 
 int get_opcode(const char *operation);
 int get_type(int opcode);

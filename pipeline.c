@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ID_CYCLES 2
@@ -10,6 +11,60 @@
 static void clear_latch(PipelineReg *reg) {
     memset(reg, 0, sizeof(*reg));
     reg->dest_reg = -1;
+}
+
+int32_t readMainMemory(Processor *cpu, int address) {
+    if (address < 0 || address >= MEMORY_SIZE) {
+        fprintf(stderr, "ERROR: Main memory read out of range: %d\n", address);
+        exit(1);
+    }
+
+    return cpu->memory[address];
+}
+
+void writeMainMemory(Processor *cpu, int address, int32_t value) {
+    if (address < 0 || address >= MEMORY_SIZE) {
+        fprintf(stderr, "ERROR: Main memory write out of range: %d\n", address);
+        exit(1);
+    }
+
+    cpu->memory[address] = value;
+}
+
+int32_t readInstructionMemory(Processor *cpu, int address) {
+    if (address < 0 || address > INSTR_MEM_END) {
+        fprintf(stderr, "ERROR: Instruction memory read out of range: %d\n", address);
+        exit(1);
+    }
+
+    return readMainMemory(cpu, address);
+}
+
+void writeInstructionMemory(Processor *cpu, int address, int32_t value) {
+    if (address < 0 || address > INSTR_MEM_END) {
+        fprintf(stderr, "ERROR: Instruction memory write out of range: %d\n", address);
+        exit(1);
+    }
+
+    writeMainMemory(cpu, address, value);
+}
+
+int32_t readDataMemory(Processor *cpu, int address) {
+    if (address < DATA_MEM_START || address >= MEMORY_SIZE) {
+        fprintf(stderr, "ERROR: Data memory read out of range: %d\n", address);
+        exit(1);
+    }
+
+    return readMainMemory(cpu, address);
+}
+
+void writeDataMemory(Processor *cpu, int address, int32_t value) {
+    if (address < DATA_MEM_START || address >= MEMORY_SIZE) {
+        fprintf(stderr, "ERROR: Data memory write out of range: %d\n", address);
+        exit(1);
+    }
+
+    writeMainMemory(cpu, address, value);
 }
 
 /*
@@ -243,7 +298,7 @@ void fetch(Processor *cpu) {
 
     clear_latch(&cpu->IF_ID);
 
-    cpu->IF_ID.instruction = cpu->memory[cpu->PC];
+    cpu->IF_ID.instruction = readInstructionMemory(cpu, cpu->PC);
     cpu->IF_ID.pc_at_fetch = cpu->PC;
     cpu->IF_ID.valid = 1;
     cpu->IF_ID.stage_cycles = 0;
@@ -332,13 +387,9 @@ void memory_stage(Processor *cpu) {
     cpu->MEM_WB = cpu->EX_MEM;
 
     if (cpu->EX_MEM.opcode == OP_MOVR) {
-        if (cpu->EX_MEM.alu_result >= 0 && cpu->EX_MEM.alu_result < MEMORY_SIZE) {
-            cpu->MEM_WB.mem_result = cpu->memory[cpu->EX_MEM.alu_result];
-        }
+        cpu->MEM_WB.mem_result = readDataMemory(cpu, cpu->EX_MEM.alu_result);
     } else if (cpu->EX_MEM.opcode == OP_MOVM) {
-        if (cpu->EX_MEM.alu_result >= 0 && cpu->EX_MEM.alu_result < MEMORY_SIZE) {
-            cpu->memory[cpu->EX_MEM.alu_result] = cpu->EX_MEM.val1;
-        }
+        writeDataMemory(cpu, cpu->EX_MEM.alu_result, cpu->EX_MEM.val1);
     }
 
     cpu->MEM_WB.stage_cycles = 0;
