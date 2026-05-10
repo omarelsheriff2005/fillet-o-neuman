@@ -369,6 +369,16 @@ void execute(Processor *cpu) {
     cpu->EX_MEM = cpu->ID_EX;
     execute_operation(cpu, &cpu->EX_MEM);
 
+    int branch_taken = (cpu->EX_MEM.opcode == OP_JMP) ||
+                       (cpu->EX_MEM.opcode == OP_JEQ &&
+                        cpu->EX_MEM.val1 == cpu->EX_MEM.val2);
+    if (branch_taken) {
+        clear_latch(&cpu->IF_ID);
+        clear_latch(&cpu->ID_EX);
+        cpu->fetching_done = 0;
+        cpu->branch_taken = 1;
+    }
+
     cpu->EX_MEM.stage_cycles = 0;
 
     clear_latch(&cpu->ID_EX);
@@ -419,6 +429,7 @@ void writeback(Processor *cpu) {
 
 void pipeline_cycle(Processor *cpu) {
     cpu->clock++;
+    cpu->branch_taken = 0;
 
     /*
        We update backwards to prevent an instruction from passing through

@@ -76,6 +76,7 @@ typedef struct {
 
     int fetching_done;
     int stall;
+    int branch_taken;
 } Processor;
 
 void initialize_processor(Processor *cpu);
