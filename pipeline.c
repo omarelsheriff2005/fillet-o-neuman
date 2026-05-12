@@ -96,7 +96,8 @@ void writeDataMemory(Processor *cpu, int address, int32_t value) {
 
 static int detect_hazard(Processor *cpu, PipelineReg *reg) {
     int op = reg->opcode;
-    int src_r1 = -1, src_r2 = -1;
+    int src_r1 = -1;
+    int src_r2 = -1;
 
     switch (op) {
         case OP_ADD:
@@ -110,35 +111,41 @@ static int detect_hazard(Processor *cpu, PipelineReg *reg) {
 
         case OP_LSL:
         case OP_LSR:
-            src_r2 = reg->r2;
-            break;
-
         case OP_ORI:
             src_r2 = reg->r2;
             break;
 
         case OP_MOVR:
-        case OP_MOVM:
             src_r2 = reg->r2;
+            break;
+
+        case OP_MOVM:
+            src_r1 = reg->r1; 
+            src_r2 = reg->r2;  
             break;
 
         default:
             break;
     }
 
-    if (op == OP_MOVM) {
-        src_r1 = reg->r1;
-        src_r2 = reg->r2;
+
+    if (cpu->ID_EX.valid && cpu->ID_EX.opcode == OP_MOVR &&
+        cpu->ID_EX.dest_reg > 0) {
+        if ((src_r1 > 0 && src_r1 == cpu->ID_EX.dest_reg) ||
+            (src_r2 > 0 && src_r2 == cpu->ID_EX.dest_reg)) {
+            printf("Hazard detected: load-use dependency on R%d in ID/EX. Stalling ID stage.\n",
+                   cpu->ID_EX.dest_reg);
+            return 1;
+        }
     }
 
-    if (cpu->ID_EX.valid && cpu->ID_EX.dest_reg > 0) {
-        if (cpu->ID_EX.opcode == OP_MOVR) {
-            if ((src_r1 > 0 && src_r1 == cpu->ID_EX.dest_reg) ||
-                (src_r2 > 0 && src_r2 == cpu->ID_EX.dest_reg)) {
-                printf("Hazard detected: load-use dependency on R%d. Stalling ID stage.\n",
-                       cpu->ID_EX.dest_reg);
-                return 1;
-            }
+    if (cpu->EX_MEM.valid && cpu->EX_MEM.opcode == OP_MOVR &&
+        cpu->EX_MEM.dest_reg > 0) {
+        if ((src_r1 > 0 && src_r1 == cpu->EX_MEM.dest_reg) ||
+            (src_r2 > 0 && src_r2 == cpu->EX_MEM.dest_reg)) {
+            printf("Hazard detected: load-use dependency on R%d in EX/MEM. Stalling ID stage.\n",
+                   cpu->EX_MEM.dest_reg);
+            return 1;
         }
     }
 
@@ -312,6 +319,8 @@ void fetch(Processor *cpu) {
 }
 
 void decode(Processor *cpu) {
+    PipelineReg decoded;
+
     if (!cpu->IF_ID.valid) {
         return;
     }
@@ -325,12 +334,14 @@ void decode(Processor *cpu) {
         return;
     }
 
-    if (detect_hazard(cpu, &cpu->IF_ID)) {
+    decoded = cpu->IF_ID;
+    decode_fields(cpu, &decoded);
+
+    if (detect_hazard(cpu, &decoded)) {
         return;
     }
 
-    cpu->ID_EX = cpu->IF_ID;
-    decode_fields(cpu, &cpu->ID_EX);
+    cpu->ID_EX = decoded;
 
     printf("ID: decoded %s instruction at PC=%d | type=%s | R1=%d R2=%d R3=%d IMM=%d SHAMT=%d ADDRESS=%d\n",
            opcode_name(cpu->ID_EX.opcode),
@@ -347,7 +358,6 @@ void decode(Processor *cpu) {
 
     clear_latch(&cpu->IF_ID);
 }
-
 void execute(Processor *cpu) {
     if (!cpu->ID_EX.valid) {
         return;
@@ -459,6 +469,9 @@ void pipeline_cycle(Processor *cpu) {
     cpu->clock++;
     cpu->branch_taken = 0;
 
+   
+    int mem_active_this_cycle = cpu->EX_MEM.valid;
+
     printf("\n================ Clock Cycle %d ================\n", cpu->clock);
 
     writeback(cpu);
@@ -466,7 +479,11 @@ void pipeline_cycle(Processor *cpu) {
     execute(cpu);
     decode(cpu);
 
-    if (cpu->clock % 2 == 1) {
+    if (cpu->branch_taken) {
+        printf("IF: skipped because branch/jump was taken and pipeline was flushed.\n");
+    } else if (mem_active_this_cycle) {
+        printf("IF: skipped because MEM is active this cycle in Von Neumann memory.\n");
+    } else if (cpu->clock % 2 == 1) {
         fetch(cpu);
     } else {
         printf("IF: skipped this cycle because Package 2 fetches every 2 cycles.\n");
@@ -481,33 +498,44 @@ int pipeline_empty(const Processor *cpu) {
            !cpu->MEM_WB.valid;
 }
 
+
 static void print_stage(const char *name, const PipelineReg *reg) {
-    if (reg->valid) {
-        printf("%s: PC=%d | instruction=0x%08X | opcode=%s | type=%s | cycles=%d | "
-               "R1=%d R2=%d R3=%d | val1=%d val2=%d | imm=%d | shamt=%d | address=%d | "
-               "ALU=%d | MEM=%d | dest=%d\n",
+    if (!reg->valid) {
+        printf("%s: empty\n", name);
+        return;
+    }
+
+   
+    if (strcmp(name, "IF/ID ") == 0 || strcmp(name, "IF/ID") == 0) {
+        printf("%s: PC=%d | instruction=0x%08X | cycles=%d | not decoded yet\n",
                name,
                reg->pc_at_fetch,
                (uint32_t)reg->instruction,
-               opcode_name(reg->opcode),
-               type_name(reg->type),
-               reg->stage_cycles,
-               reg->r1,
-               reg->r2,
-               reg->r3,
-               reg->val1,
-               reg->val2,
-               reg->imm,
-               reg->shamt,
-               reg->address,
-               reg->alu_result,
-               reg->mem_result,
-               reg->dest_reg);
-    } else {
-        printf("%s: empty\n", name);
+               reg->stage_cycles);
+        return;
     }
-}
 
+    printf("%s: PC=%d | instruction=0x%08X | opcode=%s | type=%s | cycles=%d | "
+           "R1=%d R2=%d R3=%d | val1=%d val2=%d | imm=%d | shamt=%d | address=%d | "
+           "ALU=%d | MEM=%d | dest=%d\n",
+           name,
+           reg->pc_at_fetch,
+           (uint32_t)reg->instruction,
+           opcode_name(reg->opcode),
+           type_name(reg->type),
+           reg->stage_cycles,
+           reg->r1,
+           reg->r2,
+           reg->r3,
+           reg->val1,
+           reg->val2,
+           reg->imm,
+           reg->shamt,
+           reg->address,
+           reg->alu_result,
+           reg->mem_result,
+           reg->dest_reg);
+}
 void print_pipeline_state(const Processor *cpu) {
     printf("\nPipeline State After Clock Cycle %d\n", cpu->clock);
     printf("Current PC = %d\n", cpu->PC);
