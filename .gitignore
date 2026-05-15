@@ -1,3 +1,4 @@
 .claude/
-fillet-o-neuman.exe
+*.exe
 *.o
+.superpowers/
