@@ -101,7 +101,7 @@ static void font_init(void) {
     };
     for (int i = 0; paths[i]; i++) {
         G = LoadFontEx(paths[i], 32, NULL, 0);
-        if (IsFontReady(G)) { G_ok = true; return; }
+        if (G.texture.id != 0) { G_ok = true; return; }
     }
 }
 
@@ -120,16 +120,17 @@ static void TC(const char *s, int rx, int ry, int rw, int rh, int sz, Color c) {
 
 /* rounded box */
 static void rbox(int x, int y, int w, int h, float r, Color bg, Color bd, float bthick) {
+    (void)bthick;
     Rectangle rc = {(float)x,(float)y,(float)w,(float)h};
     DrawRectangleRounded(rc, r, 6, bg);
-    DrawRectangleRoundedLines(rc, r, 6, bthick, bd);
+    DrawRectangleRoundedLines(rc, r, 6, bd);
 }
 
 /* rounded box with outer glow */
 static void rbox_glow(int x, int y, int w, int h, Color bg, Color bd) {
-    DrawRectangleRoundedLines((Rectangle){x-3.f,y-3.f,w+6.f,h+6.f}, 0.14f,6,1.f,
+    DrawRectangleRoundedLines((Rectangle){x-3.f,y-3.f,w+6.f,h+6.f}, 0.14f,6,
         (Color){bd.r,bd.g,bd.b,20});
-    DrawRectangleRoundedLines((Rectangle){x-1.f,y-1.f,w+2.f,h+2.f}, 0.13f,6,1.f,
+    DrawRectangleRoundedLines((Rectangle){x-1.f,y-1.f,w+2.f,h+2.f}, 0.13f,6,
         (Color){bd.r,bd.g,bd.b,65});
     rbox(x,y,w,h,0.12f,bg,bd,1.5f);
 }
@@ -374,7 +375,7 @@ static void draw_pipeline(void) {
         int mw = TW(msg,12)+22, mx = L_W/2-mw/2;
         int my = by+BX_H+8;
         DrawRectangleRounded((Rectangle){mx,my,mw,22},0.45f,6,mb);
-        DrawRectangleRoundedLines((Rectangle){mx,my,mw,22},0.45f,6,1.0f,mc);
+        DrawRectangleRoundedLines((Rectangle){mx,my,mw,22},0.45f,6,mc);
         T(msg,mx+11,my+5,12,mt);
     }
 }
@@ -475,7 +476,7 @@ static void draw_log(int y, int h) {
             char chip[132]; snprintf(chip,sizeof(chip)," %s ",l->text);
             int cw=TW(chip,10)+4;
             DrawRectangleRounded((Rectangle){8,ly+2,cw,12},0.5f,4,(Color){0,210,252,22});
-            DrawRectangleRoundedLines((Rectangle){8,ly+2,cw,12},0.5f,4,1.0f,(Color){0,210,252,90});
+            DrawRectangleRoundedLines((Rectangle){8,ly+2,cw,12},0.5f,4,(Color){0,210,252,90});
             T(chip,8,ly+3,10,C_CYAN);
         } else {
             DrawRectangle(6,ly+3,2,lh-6,l->col);
@@ -579,13 +580,13 @@ static void draw_botbar(void) {
     /* drop zone / error */
     if (errmsg[0]) {
         DrawRectangleRounded((Rectangle){10,y,240,28},0.18f,6,(Color){84,12,18,220});
-        DrawRectangleRoundedLines((Rectangle){10,y,240,28},0.18f,6,1.0f,C_RED_BD);
+        DrawRectangleRoundedLines((Rectangle){10,y,240,28},0.18f,6,C_RED_BD);
         T(errmsg,18,y+8,10,C_RED_TX);
     } else {
         const char *dz=loaded[0]?loaded:"Drop .txt / .asm here";
         Color dzbd=loaded[0]?C_GRN_BD:C_BD_LO;
         Color dztx=loaded[0]?C_GRN_TX:C_TXT_LO;
-        DrawRectangleRoundedLines((Rectangle){10,y,170,28},0.2f,6,1.0f,dzbd);
+        DrawRectangleRoundedLines((Rectangle){10,y,170,28},0.2f,6,dzbd);
         T(dz,18,y+8,10,dztx);
     }
 
