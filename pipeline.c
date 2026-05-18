@@ -338,6 +338,8 @@ void decode(Processor *cpu) {
     decode_fields(cpu, &decoded);
 
     if (detect_hazard(cpu, &decoded)) {
+        cpu->stall = 1;
+        cpu->IF_ID.stage_cycles = 0;
         return;
     }
 
@@ -468,6 +470,7 @@ void writeback(Processor *cpu) {
 void pipeline_cycle(Processor *cpu) {
     cpu->clock++;
     cpu->branch_taken = 0;
+    cpu->stall = 0;
 
    
     int mem_active_this_cycle = cpu->EX_MEM.valid;
